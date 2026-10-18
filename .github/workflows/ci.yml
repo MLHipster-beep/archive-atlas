@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: PYTHONPATH=src python -m unittest discover -s tests -t . -v
+
+  cross-check-dpkg:
+    name: version comparison vs dpkg
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Differential test
+        run: |
+          PYTHONPATH=src python - <<'PY'
+          import random, subprocess
+          from archive_atlas.debversion import compare
+
+          random.seed(20261018)
+          alphabet = "0123456789.+~abz"
+
+          def version():
+              epoch = f"{random.randint(0, 3)}:" if random.random() < 0.2 else ""
+              upstream = "".join(random.choice(alphabet) for _ in range(random.randint(1, 6)))
+              if not upstream[0].isdigit():
+                  upstream = "1" + upstream
+              revision = ""
+              if random.random() < 0.6:
+                  revision = "-" + "".join(random.choice(alphabet) for _ in range(random.randint(1, 4)))
+              return epoch + upstream + revision
+
+          mismatches = 0
+          for _ in range(400):
+              left, right = version(), version()
+              codes = {op: subprocess.run(["dpkg", "--compare-versions", left, op, right]).returncode
+                       for op in ("lt", "eq", "gt")}
+              if 2 in codes.values():
+                  continue
+              expected = 0 if codes["eq"] == 0 else (-1 if codes["lt"] == 0 else 1)
+              if compare(left, right) != expected:
+                  mismatches += 1
+                  print(f"mismatch: {left} vs {right}")
+          raise SystemExit(1 if mismatches else 0)
+          PY
+
+  demo:
+    name: demo archive round trip
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: index and report
+        run: |
+          export PYTHONPATH=src
+          python -m archive_atlas.cli demo /tmp/demo-archive
+          python -m archive_atlas.cli index /tmp/demo-archive -o /tmp/demo.db
+          python -m archive_atlas.cli stats /tmp/demo.db
+          python -m archive_atlas.cli broken /tmp/demo.db --format json > /tmp/broken.json || true
+          python -c "import json; d=json.load(open('/tmp/broken.json')); assert d['total']==2, d['total']"
+          python -m archive_atlas.cli cycles /tmp/demo.db --format json

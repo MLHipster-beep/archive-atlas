@@ -1,0 +1,106 @@
+.TH ARCHIVE-ATLAS 1 "2026-10-18" "archive-atlas 0.2.0" "User Commands"
+.SH NAME
+archive-atlas \- index an APT archive and answer dependency questions
+.SH SYNOPSIS
+.B archive-atlas
+.I command
+.RI [ options ]
+.SH DESCRIPTION
+.B archive-atlas
+parses the
+.I Packages
+files of an APT archive tree into a normalised SQLite database, then answers
+dependency questions about that database.
+.PP
+Analysis is scoped to one series and one architecture, because that is the set
+apt resolves against: dependencies do not cross series, and an amd64 package
+cannot satisfy an arm64 dependency.
+.SH COMMANDS
+.TP
+.B index \fIarchive\fR \-o \fIdatabase\fR
+Parse every
+.I Packages
+file under
+.IR archive /dists .
+Reads plain, gzip and xz files.  Refuses to overwrite an existing database
+unless
+.B \-\-force
+is given.  Limit the series with
+.BR \-\-series .
+.TP
+.B stats \fIdatabase\fR
+Package counts and sizes by series, component and section.
+.TP
+.B broken \fIdatabase\fR
+Dependencies that nothing in the same series and architecture satisfies,
+with the reason split into "no package provides" and "version constraint not
+satisfied".  Exits 1 when findings exist.
+.TP
+.B impact \fIdatabase\fR \fIname\fR
+The reverse-dependency closure of
+.IR name :
+every package that would lose a dependency if it were removed.
+.TP
+.B cycles \fIdatabase\fR
+Strongly connected components of the dependency graph.  Exits 1 when findings
+exist.
+.TP
+.B duplicates \fIdatabase\fR
+Names with more than one version, or present in more than one component.
+.TP
+.B orphans \fIdatabase\fR
+Packages with no reverse dependency, excluding Essential packages and those
+with required or important priority.
+.TP
+.B demo \fIdirectory\fR
+Write a synthetic archive containing five known defects.  Useful for
+evaluating the tool without downloading a mirror.
+.SH OPTIONS
+.TP
+.B \-\-series \fISERIES\fR
+Restrict to one series.
+.TP
+.B \-\-arch \fIARCH\fR
+Restrict to one architecture.
+.TP
+.B \-\-format text|json
+Output format.  JSON is stable.
+.TP
+.B \-\-limit \fIN\fR
+Maximum rows printed by
+.B orphans
+(default 20; JSON reports the full count separately).
+.SH EXIT STATUS
+.TP
+.B 0
+No findings, or a command that does not report findings completed.
+.TP
+.B 1
+Findings were reported by
+.BR broken ,
+.B duplicates
+or
+.BR cycles .
+.TP
+.B 2
+Usage error, unreadable archive, or missing database.
+.SH FILES
+.TP
+.I dists/<series>/<component>/binary-<arch>/Packages
+The input.  Compressed variants are read directly.
+.SH NOTES
+Version comparison implements Debian Policy §5.6.12 and is verified against
+.BR dpkg (1)
+on generated version pairs.
+.PP
+Virtual packages count as dependencies: a package whose
+.I Provides
+satisfies a dependency is not an orphan.
+.SH SEE ALSO
+.BR apt-cache (8),
+.BR dpkg (1),
+.BR dose-debcheck (1)
+.PP
+Debian Policy Manual §5.6.12 and §7.1.
+.SH AUTHOR
+Aditya <aditya16011664@gmail.com>
