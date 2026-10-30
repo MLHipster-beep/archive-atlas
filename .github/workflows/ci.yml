@@ -81,4 +81,35 @@ jobs:
           python -m archive_atlas.cli stats /tmp/demo.db
           python -m archive_atlas.cli broken /tmp/demo.db --format json > /tmp/broken.json || true
           python -c "import json; d=json.load(open('/tmp/broken.json')); assert d['total']==2, d['total']"
-          python -m archive_atlas.cli cycles /tmp/demo.db --format json
+
+          set +e
+          python -m archive_atlas.cli cycles /tmp/demo.db --format json > /tmp/cycles.json
+          cycles_status=$?
+          set -e
+
+          if [ "$cycles_status" -ne 1 ]; then
+            echo "Expected exit code 1 when a cycle is detected; got $cycles_status"
+            cat /tmp/cycles.json
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("/tmp/cycles.json").read_text())
+
+          found = [
+              (result["series"], result["arch"], cycle)
+              for result in data["results"]
+              for cycle in result["cycles"]
+          ]
+
+          expected = [("noble", "amd64", ["cyc-a", "cyc-b"])]
+
+          assert data["command"] == "cycles", data
+          assert data["total"] == 1, data
+          assert found == expected, found
+
+          print("PASS: detected the expected cycle in noble/amd64.")
+          PY
