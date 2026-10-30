@@ -26,7 +26,7 @@ dependencies = []
 archive-atlas = "archive_atlas.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/placeholder/archive-atlas"
+Homepage = "https://github.com/MLHipster-beep/archive-atlas"
 
 [tool.setuptools.packages.find]
 where = ["src"]
